@@ -1,0 +1,19 @@
+# Commands that will run on workspace start
+tasks:
+  - name: Setup, Install & Build
+    before: |
+      curl -fsSL https://deno.land/x/install/install.sh | sh
+      export DENO_INSTALL="/home/gitpod/.deno"
+      export PATH="$DENO_INSTALL/bin:$PATH"
+      echo 'export DENO_INSTALL="/home/gitpod/.deno"' >> /home/gitpod/.bashrc
+      echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> /home/gitpod/.bashrc
+      deno jupyter --unstable --install
+
+vscode:
+  extensions:
+    - ms-toolsai.jupyter
+    - ms-toolsai.jupyter-keymap
+    - ms-toolsai.jupyter-renderers
+    - ms-toolsai.vscode-jupyter-cell-tags
+    - ms-toolsai.vscode-jupyter-slideshow
+    - denoland.vscode-deno

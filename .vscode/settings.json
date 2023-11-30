@@ -1,4 +1,5 @@
 {
     "deno.enable": true,
-    "deno.path": "/home/gitpod/.deno/bin/deno"
+    "deno.path": "/home/gitpod/.deno/bin/deno",
+    "deno.unstable": true
 }

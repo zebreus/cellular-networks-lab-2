@@ -1,3 +1,4 @@
+---
 # Commands that will run on workspace start
 tasks:
   - name: Setup, Install & Build
@@ -17,3 +18,4 @@ vscode:
     - ms-toolsai.vscode-jupyter-cell-tags
     - ms-toolsai.vscode-jupyter-slideshow
     - denoland.vscode-deno
+    - anwar.papyrus-pdf

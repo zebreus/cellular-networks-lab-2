@@ -502,7 +502,7 @@ export const plotBars = (config: PlotConfig) => {
         x: yName,
         textAnchor: "end",
         dx: -3,
-        fill: "black",
+        imageFilter: "invert(100%)",
       }),
     ],
   });

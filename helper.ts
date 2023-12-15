@@ -41,11 +41,88 @@ type DataPoints = Array<DataRow>;
 // All datapoints
 type InputDataPoints = Array<InputDataRow>;
 
+// import { assertEquals } from "https://deno.land/std@0.209.0/assert/mod.ts";
+
 // Deno.test("untransformed data works", () => {
 //   const filledConfig = fillWithDefaultValues({
 //     data: [
 //       { myX: 8, myY: 7 },
 //       { myX: 3, myY: 4 },
+//     ],
+//     xName: "myX",
+//     yName: "myY",
+//   });
+//   assertEquals(filledConfig.data, [
+//     { myX: 8, myY: 7 },
+//     { myX: 3, myY: 4 },
+//   ]);
+// });
+
+// Deno.test("label replacement works", () => {
+//   const filledConfig = fillWithDefaultValues({
+//     data: [
+//       { myX: 8, myY: 7 },
+//       { myX: 3, myY: 4 },
+//     ],
+//     xName: "myX",
+//     yName: ["myY", "different"],
+//   });
+//   assertEquals(filledConfig.data, [
+//     { myX: 8, different: 7 },
+//     { myX: 3, different: 4 },
+//   ]);
+// });
+
+// Deno.test("Unknown x fields are filled with index", () => {
+//   const filledConfig = fillWithDefaultValues({
+//     data: [
+//       { myX: 8, myY: 7 },
+//       { myX: 3, myY: 4 },
+//     ],
+//     xName: "Measurement",
+//     yName: "myY",
+//   });
+//   assertEquals(filledConfig.data, [
+//     { Measurement: 1, myY: 7 },
+//     { Measurement: 2, myY: 4 },
+//   ]);
+// });
+
+// Deno.test("implicit X and Y names are taken from the first entry", () => {
+//   const filledConfig = fillWithDefaultValues({
+//     data: [
+//       { myX: 8, myY: 7 },
+//       { myX: 3, myY: 4 },
+//     ],
+//   });
+//   assertEquals(filledConfig.data, [
+//     { myX: 8, myY: 7 },
+//     { myX: 3, myY: 4 },
+//   ]);
+//   assertEquals(filledConfig.xName, "myX");
+//   assertEquals(filledConfig.yName, "myY");
+// });
+
+// Deno.test("untransformed data works", () => {
+//   const filledConfig = fillWithDefaultValues({
+//     data: [
+//       { myX: 8, myY: 7 },
+//       { myX: 3, myY: 4 },
+//     ],
+//   });
+//   assertEquals(filledConfig.data, [
+//     { myX: 8, myY: 7 },
+//     { myX: 3, myY: 4 },
+//   ]);
+// });
+
+// // Do not map unused fields to prevent weird effects
+// // TODO: Maybe remove
+// Deno.test("unused fields are not mapped", () => {
+//   const filledConfig = fillWithDefaultValues({
+//     data: [
+//       { myX: 8, myY: 7 },
+//       { myX: 3, myY: 4, random: [1, 2, 3, 4] },
 //     ],
 //   });
 //   assertEquals(filledConfig.data, [
@@ -77,11 +154,11 @@ type InputDataPoints = Array<InputDataRow>;
 //   };
 //   const filledConfig = fillWithDefaultValues(config);
 //   assertEquals(filledConfig.data, [
-//     { XX: 0, YY: 5 },
-//     { XX: 1, YY: 2 },
-//     { XX: 2, YY: 1 },
-//     { XX: 3, YY: 2 },
-//     { XX: 4, YY: 5 },
+//     { XX: 1, YY: 5 },
+//     { XX: 2, YY: 2 },
+//     { XX: 3, YY: 1 },
+//     { XX: 4, YY: 2 },
+//     { XX: 5, YY: 5 },
 //   ]);
 // });
 
@@ -93,11 +170,11 @@ type InputDataPoints = Array<InputDataRow>;
 //   };
 //   const filledConfig = fillWithDefaultValues(config);
 //   assertEquals(filledConfig.data, [
-//     { XX: 0, YY: 5 },
-//     { XX: 1, YY: 2 },
-//     { XX: 2, YY: 1 },
-//     { XX: 3, YY: 2 },
-//     { XX: 4, YY: 5 },
+//     { XX: 1, YY: 5 },
+//     { XX: 2, YY: 2 },
+//     { XX: 3, YY: 1 },
+//     { XX: 4, YY: 2 },
+//     { XX: 5, YY: 5 },
 //   ]);
 // });
 
@@ -181,8 +258,20 @@ export type PlotConfig = {
   to?: number;
   /** Step size when plotting a function */
   step?: number;
-  xName?: string;
-  yName?: string;
+  /** If undefined the name of the x axis is automatically determined.
+   *
+   * If a string it is used as the name of the x axis and to access fields.
+   *
+   * If a string tuple, the first value is used as a key and the second as the label
+   */
+  xName?: string | [string, string];
+  /** If undefined the name of the y axis is automatically determined.
+   *
+   * If a string it is used as the name of the y axis and to access fields.
+   *
+   * If a string tuple, the first value is used as a key and the second as the label
+   */
+  yName?: string | [string, string];
   /** Property name for the functions. */
   colorName?: string;
   /** Print debug output */
@@ -211,26 +300,26 @@ const processValue = (
   {
     x,
     color,
-    xName,
-    yName,
-    colorName,
+    xKey,
+    yKey,
+    colorKey,
   }: {
     /** Associated x name, color will be used if undefined or ""*/
     x?: number | string | undefined;
     /** Color name. "" is left as is*/
     color?: number | string | undefined;
-    xName: string;
-    yName: string;
-    colorName: string;
+    xKey: string;
+    yKey: string;
+    colorKey: string;
   }
 ): Array<Record<string, DataValue>> => {
   const xValue = x ?? color;
   const yArray =
     typeof entry === "object" ? entry : entry != undefined ? [entry] : [];
   return yArray.map((y, index) => ({
-    [yName]: y,
-    ...(xValue != undefined ? { [xName]: xValue ?? index } : {}),
-    ...(color != undefined ? { [colorName]: color } : {}),
+    [yKey]: y,
+    ...(xValue != undefined ? { [xKey]: xValue ?? index } : {}),
+    ...(color != undefined ? { [colorKey]: color } : {}),
   }));
 };
 
@@ -239,9 +328,9 @@ const processFunction = (
   {
     color,
     fallbackColor,
-    xName,
-    yName,
-    colorName,
+    xKey,
+    yKey,
+    colorKey,
     from,
     to,
     step,
@@ -251,11 +340,11 @@ const processFunction = (
     /** Fallback color when `color` is not set and the function has no name */
     fallbackColor: string | undefined;
     /** Name of the x field*/
-    xName: string;
+    xKey: string;
     /** Name of the y field*/
-    yName: string;
+    yKey: string;
     /** Name of the color field*/
-    colorName: string;
+    colorKey: string;
     /** Start the plot at this x value */
     from: number;
     /** End the plot at this y value */
@@ -276,9 +365,9 @@ const processFunction = (
       processValue(y, {
         x,
         color: functionColor,
-        colorName,
-        xName,
-        yName,
+        colorKey,
+        xKey,
+        yKey,
       })
     );
   });
@@ -286,9 +375,109 @@ const processFunction = (
   return plottedFunction;
 };
 
+const getDomain = (
+  data: DataPoints,
+  {
+    from,
+    to,
+    key,
+    paddingFactor = 1.15,
+    debug,
+  }: {
+    /** Override the calculated from value */
+    from: number | undefined;
+    /** Override the calculated to value */
+    to: number | undefined;
+    /** The key of the objects in data */
+    key: string;
+    /** Padding factor for the domain. Calculated min and max will be multiplied by this */
+    paddingFactor?: number;
+    /** Enable output of implicit things */
+    debug?: boolean;
+  }
+): [number, number] => {
+  const minYValue = data.reduce((min, { [key]: y }) => {
+    return typeof y === "number" ? (y < min ? y : min) : min;
+  }, Infinity);
+  const maxYValue = data.reduce((max, { [key]: y }) => {
+    return typeof y === "number" ? (y > max ? y : max) : max;
+  }, -Infinity);
+
+  const implicitFrom = Number(
+    (Math.min(0, minYValue) * paddingFactor).toPrecision(2)
+  );
+  const implicitTo = Number(
+    (Math.max(0, maxYValue) * paddingFactor).toPrecision(2)
+  );
+
+  const realFrom = from ?? implicitFrom;
+  const realTo = to ?? implicitTo;
+
+  if (debug) {
+    if (realFrom != from) {
+      console.log(`Using implicit from value ${implicitFrom} based on data`);
+    }
+    if (realTo != to) {
+      console.log(`Using implicit to value ${implicitTo} based on data`);
+    }
+  }
+
+  return [realFrom, realTo];
+};
+
 const DEFAULT_COLOR_NAME = "__color";
 const DEFAULT_X_NAME = "X";
 const DEFAULT_Y_NAME = "Y";
+
+const getImplicitXName = (config: PlotConfig) => {
+  const { xName, data = [], debug } = config;
+
+  if (xName != undefined) {
+    return xName;
+  }
+
+  const firstObjectRow = data.find(
+    (inputRow) => typeof inputRow === "object" && !Array.isArray(inputRow)
+  );
+  const entries = firstObjectRow ? Object.entries(firstObjectRow) : [];
+
+  const implicitXName = entries[0]?.[0];
+  if (implicitXName) {
+    if (debug) {
+      console.warn(
+        `Implicitly using the name of the first field (${implicitXName}) for the X axis`
+      );
+    }
+    return implicitXName;
+  }
+
+  return DEFAULT_X_NAME;
+};
+
+const getImplicitYName = (config: PlotConfig) => {
+  const { yName, data = [], debug } = config;
+
+  if (yName != undefined) {
+    return yName;
+  }
+
+  const firstObjectRow = data.find(
+    (inputRow) => typeof inputRow === "object" && !Array.isArray(inputRow)
+  );
+  const entries = firstObjectRow ? Object.entries(firstObjectRow) : [];
+
+  const implicitYName = entries[1]?.[0];
+  if (implicitYName) {
+    if (debug) {
+      console.warn(
+        `Implicitly using the name of the first field (${implicitYName}) for the Y axis`
+      );
+    }
+    return implicitYName;
+  }
+
+  return DEFAULT_Y_NAME;
+};
 
 const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
   const {
@@ -296,23 +485,27 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
     from,
     to,
     step = 0.1,
-    xName = DEFAULT_X_NAME,
-    yName = DEFAULT_Y_NAME,
+    xName = getImplicitXName(config),
+    yName = getImplicitYName(config),
     data = [],
     colorName = DEFAULT_COLOR_NAME,
     debug = false,
   } = config;
 
-  // const functions: Array<[string, (x: number) => number]> = fn
-  //   ? [[fn.name || "Function", fn], ...fns]
-  //   : fns;
+  const [xKey, xLabel] = typeof xName == "object" ? xName : [xName, xName];
+  const [yKey, yLabel] = typeof yName == "object" ? yName : [yName, yName];
+  const [colorKey, colorLabel] =
+    typeof colorName == "object" ? colorName : [colorName, colorName];
+
+  const usedFields = [xKey, yKey, colorName].filter((f) => f != undefined);
+
   const filledData: DataPoints = data.flatMap((inputRow, index) => {
     if (typeof inputRow === "number") {
       return processValue(inputRow, {
-        x: index,
-        xName,
-        yName,
-        colorName,
+        x: index + 1,
+        xKey,
+        yKey,
+        colorKey,
       });
     }
 
@@ -322,7 +515,12 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
           typeof value == "object" ? value : value != undefined ? [value] : [];
         return values.map((value) => [key, value] as const);
       });
-      const rows = entries.reduce(
+
+      const usedEntries = entries.filter((entries) =>
+        usedFields.includes(entries[0]?.[0])
+      );
+
+      let rows = usedEntries.reduce(
         (acc, values) =>
           acc.flatMap((previousEntry) =>
             values.map(([key, value]) => ({
@@ -332,6 +530,21 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
           ),
         [{}] as DataPoints
       );
+
+      if (rows.every((row) => row[xKey] == undefined)) {
+        if (debug) {
+          console.warn(
+            `Row ${index} has no values for the x Axis. Using index + 1 (${
+              index + 1
+            }) instead`
+          );
+        }
+        rows = rows.map((row) => ({
+          ...row,
+          [xKey]: index + 1,
+        }));
+      }
+
       return rows;
     }
 
@@ -343,10 +556,10 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
     if (typeof data === "function") {
       return processFunction(data, {
         color,
-        fallbackColor: "" + index,
-        xName,
-        yName,
-        colorName,
+        fallbackColor: "" + index + 1,
+        xKey,
+        yKey,
+        colorKey,
         from: from ?? 0,
         to: to ?? 10,
         step,
@@ -354,35 +567,49 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
     }
 
     return processValue(data, {
-      x: index,
-      color: color ?? "" + index,
-      xName,
-      yName,
-      colorName,
+      x: index + 1,
+      color: color ?? "" + index + 1,
+      xKey,
+      yKey,
+      colorKey,
     });
   });
   // typeof data[0] === "number"
   //   ? [[xName, data as number[]] satisfies [string, number[]]]
   //   : (data as Array<[string, Array<number>]>);
 
-  const minYValue = filledData.reduce((min, { [yName]: y }) => {
-    return typeof y === "number" ? (y < min ? y : min) : min;
-  }, Infinity);
-  const maxYValue = filledData.reduce((max, { [yName]: y }) => {
-    return typeof y === "number" ? (y > max ? y : max) : max;
-  }, -Infinity);
+  const [calculatedFrom, calculatedTo] = getDomain(filledData, {
+    key: yKey,
+    from,
+    to,
+    debug,
+  });
 
   const chartName = name ?? ""; // `${xName} vs ${yName}`;
 
+  // Replace xKey and yKey with xLabel and yLabel
+  const dataWithFixedFields = filledData.map((row) => {
+    const fixedEntries = Object.entries(row).map(([key, value]) => {
+      const newKey =
+        {
+          [xKey]: xLabel,
+          [yKey]: yLabel,
+          [colorKey]: colorLabel,
+        }[key] ?? key;
+      return [newKey, value] as const;
+    });
+    return Object.fromEntries(fixedEntries);
+  });
+
   return {
     name: chartName,
-    from: from ?? Math.min(0, minYValue),
-    to: to ?? maxYValue * 1.1,
+    from: calculatedFrom,
+    to: calculatedTo,
     step,
-    xName,
-    yName,
-    data: filledData,
-    colorName,
+    xName: xLabel,
+    yName: yLabel,
+    data: dataWithFixedFields,
+    colorName: colorLabel,
     debug,
   };
 };
@@ -431,7 +658,7 @@ export const plotBoxes = (config: PlotConfig) => {
     [xName]: data[colorName] ?? data[xName],
   }));
 
-  const showLabels = colorName !== DEFAULT_COLOR_NAME;
+  const showLabels = xName !== DEFAULT_X_NAME;
 
   if (debug) {
     console.log({ data: dataWithColorAsX });
@@ -439,7 +666,7 @@ export const plotBoxes = (config: PlotConfig) => {
 
   return Plot.plot({
     title: name,
-    padding: 0,
+    // padding: 0,
     document: dom.window.document,
     marginLeft: showLabels ? 70 : undefined,
     x: {
@@ -449,14 +676,14 @@ export const plotBoxes = (config: PlotConfig) => {
     },
     y: {
       axis: "left",
-      ...(showLabels ? { label: colorName } : { label: "" }),
+      ...(showLabels ? { label: xName } : { label: "" }),
     },
     style: {
       background: "none",
       overflow: "visible",
     },
 
-    marks: [Plot.boxX(dataWithColorAsX, { y: xName, x: yName, fill: xName })],
+    marks: [Plot.boxX(dataWithColorAsX, { y: xName, x: yName, fill: "grey" })],
   });
 };
 
@@ -465,11 +692,11 @@ export const plotBars = (config: PlotConfig) => {
     fillWithDefaultValues(config);
 
   const dataWithColorAsX = data.map((data) => ({
-    ...data,
     [xName]: data[colorName] ?? data[xName],
+    ...data,
   }));
 
-  const showLabels = colorName !== DEFAULT_COLOR_NAME;
+  const showLabels = xName !== DEFAULT_X_NAME;
 
   if (debug) {
     console.log({ data: dataWithColorAsX });
@@ -487,7 +714,7 @@ export const plotBars = (config: PlotConfig) => {
     },
     y: {
       axis: "left",
-      ...(showLabels ? { label: colorName } : { label: "" }),
+      ...(showLabels ? { label: xName } : { label: "" }),
     },
     style: {
       background: "none",
@@ -495,15 +722,38 @@ export const plotBars = (config: PlotConfig) => {
     },
 
     marks: [
-      Plot.barX(dataWithColorAsX, { y: xName, x: yName }),
-      Plot.textX(dataWithColorAsX, {
-        text: (d) => d[yName],
-        y: xName,
-        x: yName,
-        textAnchor: "end",
-        dx: -3,
-        imageFilter: "invert(100%)",
-      }),
+      Plot.barX(
+        dataWithColorAsX,
+        Plot.groupY({ x: "mean" }, { y: xName, x: yName })
+      ),
+      Plot.textX(
+        dataWithColorAsX.filter((d) => Number(d[yName]) > 0),
+        Plot.groupY(
+          { x: "mean", text: "mean" },
+          {
+            text: (d) => d[yName],
+            y: xName,
+            x: yName,
+            textAnchor: "end",
+            dx: -3,
+            imageFilter: "invert(100%)",
+          }
+        )
+      ),
+      Plot.textX(
+        dataWithColorAsX.filter((d) => Number(d[yName]) < 0),
+        Plot.groupY(
+          { x: "mean", text: "mean" },
+          {
+            text: (d) => d[yName],
+            y: xName,
+            x: yName,
+            textAnchor: "start",
+            dx: 3,
+            imageFilter: "invert(100%)",
+          }
+        )
+      ),
     ],
   });
 };

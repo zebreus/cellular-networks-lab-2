@@ -1,36 +1,199 @@
-import vl from "npm:vega-lite-api";
 // @deno-types="npm:@types/d3@7.4.3"
 import * as _d3 from "npm:d3@7.4.3";
 import * as Plot from "npm:@observablehq/plot";
 import { JSDOM } from "https://jspm.dev/npm:jsdom-deno@19.0.1";
+
 const dom = new JSDOM(
   `<!DOCTYPE html><p>Hello world <img src="https://example.com/logo.svg" /></p>`
 );
 const _el = dom.window.document.createElement("div");
 
+// A single value
+type DataValue = number | string;
+// A single value or
+// Multiple values that will be mapped to the key above.
+type InputDataValue = DataValue | Array<DataValue> | undefined;
+
+// A single key
+type DataKey = string;
+// A single key
+type InputDataKey = string;
+
+type InputDataFunction = (x: number) => InputDataValue | undefined;
+
+// Exactly one row of data
+type DataRow = Record<DataKey, DataValue>;
+// Multiple rows of data, that have the same keys
+type InputDataRow =
+  /** A record with is interpreted as a entry
+   * If values are arrays we take their cartesian product
+   */
+  | Record<DataKey, InputDataValue>
+  /** For tuples the first value is the color and the second are the x and y values
+   * If the second is only a one-dimensional array or a single value the x
+   */
+  | [string, InputDataValue | InputDataFunction]
+  | InputDataFunction
+  | number;
+
+// All datapoints
+type DataPoints = Array<DataRow>;
+// All datapoints
+type InputDataPoints = Array<InputDataRow>;
+
+// Deno.test("untransformed data works", () => {
+//   const filledConfig = fillWithDefaultValues({
+//     data: [
+//       { myX: 8, myY: 7 },
+//       { myX: 3, myY: 4 },
+//     ],
+//   });
+//   assertEquals(filledConfig.data, [
+//     { myX: 8, myY: 7 },
+//     { myX: 3, myY: 4 },
+//   ]);
+// });
+
+// Deno.test("weird stuff", () => {
+//   const filledConfig = fillWithDefaultValues({
+//     data: [
+//       { myX: 8, myY: [1, 2, 3] },
+//       { myX: 3, myY: 4 },
+//     ],
+//   });
+//   assertEquals(filledConfig.data, [
+//     { myX: 8, myY: 1 },
+//     { myX: 8, myY: 2 },
+//     { myX: 8, myY: 3 },
+//     { myX: 3, myY: 4 },
+//   ]);
+// });
+
+// Deno.test("Array gets mapped to x and y names", () => {
+//   const config: PlotConfig = {
+//     data: [5, 2, 1, 2, 5],
+//     xName: "XX",
+//     yName: "YY",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { XX: 0, YY: 5 },
+//     { XX: 1, YY: 2 },
+//     { XX: 2, YY: 1 },
+//     { XX: 3, YY: 2 },
+//     { XX: 4, YY: 5 },
+//   ]);
+// });
+
+// Deno.test("Array gets mapped to x and y namess", () => {
+//   const config: PlotConfig = {
+//     data: [5, 2, 1, 2, 5],
+//     xName: "XX",
+//     yName: "YY",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { XX: 0, YY: 5 },
+//     { XX: 1, YY: 2 },
+//     { XX: 2, YY: 1 },
+//     { XX: 3, YY: 2 },
+//     { XX: 4, YY: 5 },
+//   ]);
+// });
+
+// Deno.test("Function lines work", () => {
+//   const config: PlotConfig = {
+//     data: [
+//       ["Line A", (x) => x],
+//       ["Line B", (x) => x * 2],
+//     ],
+//     from: 0,
+//     to: 5,
+//     step: 1,
+//     xName: "XX",
+//     yName: "YY",
+//     colorName: "color",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { color: "Line A", XX: 0, YY: 0 },
+//     { color: "Line A", XX: 1, YY: 1 },
+//     { color: "Line A", XX: 2, YY: 2 },
+//     { color: "Line A", XX: 3, YY: 3 },
+//     { color: "Line A", XX: 4, YY: 4 },
+//     { color: "Line B", XX: 0, YY: 0 },
+//     { color: "Line B", XX: 1, YY: 2 },
+//     { color: "Line B", XX: 2, YY: 4 },
+//     { color: "Line B", XX: 3, YY: 6 },
+//     { color: "Line B", XX: 4, YY: 8 },
+//   ]);
+// });
+
 /** Config options for plotting functions */
 export type PlotConfig = {
   /** Name of this chart. Set to "" for no name */
   name?: string;
-  /** Plot a single function */
-  fn?: (x: number) => number;
-  /** Plot a multiple functions */
-  fns?: Array<[string, (x: number) => number]>;
+  // /** Plot a single function */
+  // fn?: (x: number) => number;
+  // /** Plot a multiple functions */
+  // fns?: Array<[string, (x: number) => DataPoint]>;
+  /** Individual values and their names
+   *
+   * Can be an array like
+   * ```
+   * [5,2,1,2,5]
+   * ```
+   *
+   * when x is just . This is equivalent to the more tidy:
+   *
+   * ```
+   * [
+   *  [0, 5],
+   *  [1, 2],
+   *  [2, 1],
+   *  [3, 2],
+   *  [4, 5]
+   * ]
+   * ```
+   *
+   * That second form has the advantage that multiple values per x can be expressed, like this:
+   *
+   * ```
+   * [
+   *  [2, 5],
+   *  [2, 3]
+   * ]
+   * ```
+   *
+   * You can also use a shorthand multiple values, by specifying the second value as an array:
+   *
+   * ```
+   * [
+   *  [2, [5, 3]],
+   * ]
+   * ```
+   */
 
+  data: InputDataPoints;
+  /** Start the plot at this x value */
   from?: number;
+  /** End the plot at this y value */
   to?: number;
+  /** Step size when plotting a function */
   step?: number;
   xName?: string;
   yName?: string;
   /** Property name for the functions. */
   colorName?: string;
+  /** Print debug output */
+  debug?: boolean;
 };
 
 /** Config options for plotting functions, but with all default values supplied*/
 export type FilledConfig = {
   name: string;
-  /** The functions with their names */
-  functions: Array<[string, (x: number) => number]>;
+  /** Individual values and their names */
+  data: DataPoints;
 
   from: number;
   to: number;
@@ -39,59 +202,194 @@ export type FilledConfig = {
   yName: string;
   /** Property name for the functions. */
   colorName: string;
+  /** Print debug output */
+  debug: boolean;
 };
+
+const processValue = (
+  entry: InputDataValue,
+  {
+    x,
+    color,
+    xName,
+    yName,
+    colorName,
+  }: {
+    /** Associated x name, color will be used if undefined or ""*/
+    x?: number | string | undefined;
+    /** Color name. "" is left as is*/
+    color?: number | string | undefined;
+    xName: string;
+    yName: string;
+    colorName: string;
+  }
+): Array<Record<string, DataValue>> => {
+  const xValue = x ?? color;
+  const yArray =
+    typeof entry === "object" ? entry : entry != undefined ? [entry] : [];
+  return yArray.map((y, index) => ({
+    [yName]: y,
+    ...(xValue != undefined ? { [xName]: xValue ?? index } : {}),
+    ...(color != undefined ? { [colorName]: color } : {}),
+  }));
+};
+
+const processFunction = (
+  inputFunction: InputDataFunction,
+  {
+    color,
+    fallbackColor,
+    xName,
+    yName,
+    colorName,
+    from,
+    to,
+    step,
+  }: {
+    /** Color name. "" is left as is, undefined will be overwritten by the function name */
+    color: string | undefined;
+    /** Fallback color when `color` is not set and the function has no name */
+    fallbackColor: string | undefined;
+    /** Name of the x field*/
+    xName: string;
+    /** Name of the y field*/
+    yName: string;
+    /** Name of the color field*/
+    colorName: string;
+    /** Start the plot at this x value */
+    from: number;
+    /** End the plot at this y value */
+    to: number;
+    /** Step size when plotting a function */
+    step: number;
+  }
+): Array<Record<string, DataValue>> => {
+  const length = Math.ceil((to - from) / step);
+  const xPositions = Array.from({ length }, (_, index) => from + index * step);
+  const functionColor =
+    color ?? (inputFunction.name || undefined) ?? fallbackColor;
+
+  const plottedFunction = xPositions.flatMap((x) => {
+    const y = inputFunction(x);
+    const yArray = typeof y === "object" ? y : y !== undefined ? [y] : [];
+    return yArray.flatMap((y) =>
+      processValue(y, {
+        x,
+        color: functionColor,
+        colorName,
+        xName,
+        yName,
+      })
+    );
+  });
+
+  return plottedFunction;
+};
+
+const DEFAULT_COLOR_NAME = "__color";
+const DEFAULT_X_NAME = "X";
+const DEFAULT_Y_NAME = "Y";
 
 const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
   const {
     name,
-    from = 0,
-    to = 10,
+    from,
+    to,
     step = 0.1,
-    xName = "X",
-    yName = "Y",
-    fns = [],
-    fn,
-    colorName = "__color",
+    xName = DEFAULT_X_NAME,
+    yName = DEFAULT_Y_NAME,
+    data = [],
+    colorName = DEFAULT_COLOR_NAME,
+    debug = false,
   } = config;
 
-  const functions: Array<[string, (x: number) => number]> = fn
-    ? [[fn.name || "Function", fn]]
-    : fns;
+  // const functions: Array<[string, (x: number) => number]> = fn
+  //   ? [[fn.name || "Function", fn], ...fns]
+  //   : fns;
+  const filledData: DataPoints = data.flatMap((inputRow, index) => {
+    if (typeof inputRow === "number") {
+      return processValue(inputRow, {
+        x: index,
+        xName,
+        yName,
+        colorName,
+      });
+    }
 
-  const chartName = name ?? `${xName} vs ${yName}`;
+    if (typeof inputRow === "object" && !Array.isArray(inputRow)) {
+      const entries = Object.entries(inputRow).map(([key, value]) => {
+        const values =
+          typeof value == "object" ? value : value != undefined ? [value] : [];
+        return values.map((value) => [key, value] as const);
+      });
+      const rows = entries.reduce(
+        (acc, values) =>
+          acc.flatMap((previousEntry) =>
+            values.map(([key, value]) => ({
+              ...previousEntry,
+              [key]: value,
+            }))
+          ),
+        [{}] as DataPoints
+      );
+      return rows;
+    }
+
+    const [color, data] =
+      Array.isArray(inputRow) && inputRow.length === 2
+        ? inputRow
+        : [undefined, inputRow];
+
+    if (typeof data === "function") {
+      return processFunction(data, {
+        color,
+        fallbackColor: "" + index,
+        xName,
+        yName,
+        colorName,
+        from: from ?? 0,
+        to: to ?? 10,
+        step,
+      });
+    }
+
+    return processValue(data, {
+      x: index,
+      color: color ?? "" + index,
+      xName,
+      yName,
+      colorName,
+    });
+  });
+  // typeof data[0] === "number"
+  //   ? [[xName, data as number[]] satisfies [string, number[]]]
+  //   : (data as Array<[string, Array<number>]>);
+
+  const minYValue = filledData.reduce((min, { [yName]: y }) => {
+    return typeof y === "number" ? (y < min ? y : min) : min;
+  }, Infinity);
+  const maxYValue = filledData.reduce((max, { [yName]: y }) => {
+    return typeof y === "number" ? (y > max ? y : max) : max;
+  }, -Infinity);
+
+  const chartName = name ?? ""; // `${xName} vs ${yName}`;
 
   return {
     name: chartName,
-    from,
-    to,
+    from: from ?? Math.min(0, minYValue),
+    to: to ?? maxYValue * 1.1,
     step,
     xName,
     yName,
-    functions,
+    data: filledData,
     colorName,
+    debug,
   };
 };
 
-export const generatePlotData = (
-  config: PlotConfig
-): Array<Record<string, number | string>> => {
-  const { from, to, step, xName, yName, functions, colorName } =
-    fillWithDefaultValues(config);
-  const length = Math.ceil((to - from) / step);
-  const xPositions = Array.from({ length }, (_, index) => from + index * step);
-
-  return xPositions.flatMap((x) =>
-    functions.map(([name, mapXToY]) => ({
-      [xName]: x,
-      [yName]: mapXToY(x),
-      [colorName]: name,
-    }))
-  );
-};
-
 export const plotFunctions = (config: PlotConfig) => {
-  const { xName, yName, colorName, name } = fillWithDefaultValues(config);
-  const data = generatePlotData(config);
+  const { xName, yName, colorName, name, data } = fillWithDefaultValues(config);
+
   return Plot.plot({
     title: name,
     padding: 0,
@@ -124,17 +422,103 @@ export const plotFunctions = (config: PlotConfig) => {
   });
 };
 
-export const plotFunctionsVega = async (config: PlotConfig) => {
-  const { xName = "x", yName = "y" } = config;
-  const data = generatePlotData(config);
-  return await vl
-    .markLine()
-    .data(data)
-    .encode(
-      vl.x().fieldQ(xName),
-      vl.y().fieldQ(yName),
-      vl.color().field("Type")
-    )
-    .width(700)
-    .height(400);
+export const plotBoxes = (config: PlotConfig) => {
+  const { xName, yName, colorName, data, name, from, to, debug } =
+    fillWithDefaultValues(config);
+
+  const dataWithColorAsX = data.map((data) => ({
+    ...data,
+    [xName]: data[colorName] ?? data[xName],
+  }));
+
+  const showLabels = colorName !== DEFAULT_COLOR_NAME;
+
+  if (debug) {
+    console.log({ data: dataWithColorAsX });
+  }
+
+  return Plot.plot({
+    title: name,
+    padding: 0,
+    document: dom.window.document,
+    marginLeft: showLabels ? 70 : undefined,
+    x: {
+      axis: "top",
+      domain: [from, to],
+      grid: true,
+    },
+    y: {
+      axis: "left",
+      ...(showLabels ? { label: colorName } : { label: "" }),
+    },
+    style: {
+      background: "none",
+      overflow: "visible",
+    },
+
+    marks: [Plot.boxX(dataWithColorAsX, { y: xName, x: yName, fill: xName })],
+  });
 };
+
+export const plotBars = (config: PlotConfig) => {
+  const { xName, yName, colorName, data, name, from, to, debug } =
+    fillWithDefaultValues(config);
+
+  const dataWithColorAsX = data.map((data) => ({
+    ...data,
+    [xName]: data[colorName] ?? data[xName],
+  }));
+
+  const showLabels = colorName !== DEFAULT_COLOR_NAME;
+
+  if (debug) {
+    console.log({ data: dataWithColorAsX });
+  }
+
+  return Plot.plot({
+    title: name,
+    // padding: 0,
+    document: dom.window.document,
+    marginLeft: showLabels ? 50 : undefined,
+    x: {
+      axis: "top",
+      domain: [from, to],
+      grid: true,
+    },
+    y: {
+      axis: "left",
+      ...(showLabels ? { label: colorName } : { label: "" }),
+    },
+    style: {
+      background: "none",
+      overflow: "visible",
+    },
+
+    marks: [
+      Plot.barX(dataWithColorAsX, { y: xName, x: yName }),
+      Plot.textX(dataWithColorAsX, {
+        text: (d) => d[yName],
+        y: xName,
+        x: yName,
+        textAnchor: "end",
+        dx: -3,
+        fill: "black",
+      }),
+    ],
+  });
+};
+
+// export const plotFunctionsVega = async (config: PlotConfig) => {
+//   const { xName = "x", yName = "y" } = config;
+//   const data = generatePlotData(config);
+//   return await vl
+//     .markLine()
+//     .data(data)
+//     .encode(
+//       vl.x().fieldQ(xName),
+//       vl.y().fieldQ(yName),
+//       vl.color().field("Type")
+//     )
+//     .width(700)
+//     .height(400);
+// };

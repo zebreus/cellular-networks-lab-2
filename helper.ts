@@ -32,7 +32,7 @@ type InputDataRow =
   /** For tuples the first value is the color and the second are the x and y values
    * If the second is only a one-dimensional array or a single value the x
    */
-  | [string, InputDataValue | InputDataFunction]
+  | [string, Array<InputDataValue> | InputDataFunction]
   | InputDataFunction
   | number;
 
@@ -42,7 +42,6 @@ type DataPoints = Array<DataRow>;
 type InputDataPoints = Array<InputDataRow>;
 
 // import { assertEquals } from "https://deno.land/std@0.209.0/assert/mod.ts";
-
 // Deno.test("untransformed data works", () => {
 //   const filledConfig = fillWithDefaultValues({
 //     data: [
@@ -203,6 +202,56 @@ type InputDataPoints = Array<InputDataRow>;
 //     { color: "Line B", XX: 2, YY: 4 },
 //     { color: "Line B", XX: 3, YY: 6 },
 //     { color: "Line B", XX: 4, YY: 8 },
+//   ]);
+// });
+
+// Deno.test("Colored values work", () => {
+//   const config: PlotConfig = {
+//     data: [
+//       ["Line A", [5, 2, 1, 2, 5]],
+//       ["Line B", [5, 2, 1, 2, 5]],
+//     ],
+//     xName: "XX",
+//     yName: "YY",
+//     colorName: "color",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { color: "Line A", XX: 1, YY: 5 },
+//     { color: "Line A", XX: 2, YY: 2 },
+//     { color: "Line A", XX: 3, YY: 1 },
+//     { color: "Line A", XX: 4, YY: 2 },
+//     { color: "Line A", XX: 5, YY: 5 },
+//     { color: "Line B", XX: 1, YY: 5 },
+//     { color: "Line B", XX: 2, YY: 5 },
+//     { color: "Line B", XX: 3, YY: 5 },
+//     { color: "Line B", XX: 4, YY: 5 },
+//     { color: "Line B", XX: 5, YY: 5 },
+//   ]);
+// });
+
+// Deno.test("Colored summarized values", () => {
+//   const config: PlotConfig = {
+//     data: [
+//       ["Line A", [[5, 2, 1, 2, 5]]],
+//       ["Line B", [[5, 5, 5, 5, 5]]],
+//     ],
+//     xName: "XX",
+//     yName: "YY",
+//     colorName: "color",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { color: "Line A", XX: 1, YY: 5 },
+//     { color: "Line A", XX: 1, YY: 2 },
+//     { color: "Line A", XX: 1, YY: 1 },
+//     { color: "Line A", XX: 1, YY: 2 },
+//     { color: "Line A", XX: 1, YY: 5 },
+//     { color: "Line B", XX: 1, YY: 5 },
+//     { color: "Line B", XX: 1, YY: 5 },
+//     { color: "Line B", XX: 1, YY: 5 },
+//     { color: "Line B", XX: 1, YY: 5 },
+//     { color: "Line B", XX: 1, YY: 5 },
 //   ]);
 // });
 
@@ -566,13 +615,15 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
       });
     }
 
-    return processValue(data, {
-      x: index + 1,
-      color: color ?? "" + index + 1,
-      xKey,
-      yKey,
-      colorKey,
-    });
+    return data.flatMap((data, index) =>
+      processValue(data, {
+        x: index + 1,
+        color: color ?? "" + index + 1,
+        xKey,
+        yKey,
+        colorKey,
+      })
+    );
   });
   // typeof data[0] === "number"
   //   ? [[xName, data as number[]] satisfies [string, number[]]]
@@ -696,7 +747,13 @@ export const plotBars = (config: PlotConfig) => {
     ...data,
   }));
 
+  const differentColors = data
+    .map((d) => d[colorName])
+    .filter((c) => c !== undefined)
+    .filter((c, i, a) => a.indexOf(c) === i).length;
+
   const showLabels = xName !== DEFAULT_X_NAME;
+  const showColor = differentColors > 1;
 
   if (debug) {
     console.log({ data: dataWithColorAsX });
@@ -712,45 +769,59 @@ export const plotBars = (config: PlotConfig) => {
       domain: [from, to],
       grid: true,
     },
-    y: {
+    fy: {
       axis: "left",
+
       ...(showLabels ? { label: xName } : { label: "" }),
     },
+    ...(showColor
+      ? {
+          color: { legend: "swatches", label: colorName },
+          y: { label: "", ticks: [] },
+        }
+      : {}), // color: { legend: "swatches" },
     style: {
       background: "none",
       overflow: "visible",
     },
-
     marks: [
       Plot.barX(
         dataWithColorAsX,
-        Plot.groupY({ x: "mean" }, { y: xName, x: yName })
+        Plot[showColor ? "groupY" : "groupZ"](
+          { x: "mean" },
+          {
+            x: yName,
+            fy: xName,
+
+            ...(showColor ? { fill: colorName, y: colorName } : { z: xName }),
+          }
+        )
       ),
       Plot.textX(
         dataWithColorAsX.filter((d) => Number(d[yName]) > 0),
-        Plot.groupY(
+        Plot[showColor ? "groupY" : "groupZ"](
           { x: "mean", text: "mean" },
           {
             text: (d) => d[yName],
-            y: xName,
             x: yName,
-            textAnchor: "end",
-            dx: -3,
-            imageFilter: "invert(100%)",
+            fy: xName,
+            ...(showColor ? { y: colorName } : { z: xName }),
+            textAnchor: "start",
+            dx: 3,
           }
         )
       ),
       Plot.textX(
         dataWithColorAsX.filter((d) => Number(d[yName]) < 0),
-        Plot.groupY(
+        Plot[showColor ? "groupY" : "groupZ"](
           { x: "mean", text: "mean" },
           {
             text: (d) => d[yName],
-            y: xName,
             x: yName,
-            textAnchor: "start",
-            dx: 3,
-            imageFilter: "invert(100%)",
+            fy: xName,
+            ...(showColor ? { y: colorName } : { z: xName }),
+            textAnchor: "end",
+            dx: -3,
           }
         )
       ),

@@ -2,10 +2,20 @@
 import * as _d3 from "npm:d3@7.4.3";
 import * as Plot from "npm:@observablehq/plot";
 import { JSDOM } from "https://jspm.dev/npm:jsdom-deno@19.0.1";
+import { createCanvas } from "https://deno.land/x/canvas/mod.ts";
 
 const dom = new JSDOM(
   `<!DOCTYPE html><p>Hello world <img src="https://example.com/logo.svg" /></p>`
 );
+
+dom.window.document.createElementReal = dom.window.document.createElement;
+dom.window.document.createElement = (e: string) => {
+  if (e == "canvas") {
+    return { ...createCanvas(256, 1) };
+  }
+  return dom.window.document.createElementReal(e);
+};
+
 const _el = dom.window.document.createElement("div");
 
 // A single value
@@ -13,6 +23,15 @@ type DataValue = number | string;
 // A single value or
 // Multiple values that will be mapped to the key above.
 type InputDataValue = DataValue | Array<DataValue> | undefined;
+
+/** XY */
+type XYInputDataValue =
+  // Explicit X Y pair
+  | Array<[string | number, InputDataValue]>
+  // Y values with implicit index X
+  | Array<InputDataValue>
+  // X Y function
+  | InputDataFunction;
 
 // A single key
 type DataKey = string;
@@ -32,8 +51,8 @@ type InputDataRow =
   /** For tuples the first value is the color and the second are the x and y values
    * If the second is only a one-dimensional array or a single value the x
    */
-  | [string, Array<InputDataValue> | InputDataFunction]
-  | InputDataFunction
+  | [string, XYInputDataValue]
+  | XYInputDataValue
   | number;
 
 // All datapoints
@@ -161,6 +180,23 @@ type InputDataPoints = Array<InputDataRow>;
 //   ]);
 // });
 
+// Deno.test("Implicit color name works", () => {
+//   const config: PlotConfig = {
+//     data: [5, 2, 1, 2, 5],
+//     xName: "XX",
+//     yName: "YY",
+//     colorName: "COLOR",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { XX: 1, COLOR: 1, YY: 5 },
+//     { XX: 2, COLOR: 2, YY: 2 },
+//     { XX: 3, COLOR: 3, YY: 1 },
+//     { XX: 4, COLOR: 4, YY: 2 },
+//     { XX: 5, COLOR: 5, YY: 5 },
+//   ]);
+// });
+
 // Deno.test("Array gets mapped to x and y namess", () => {
 //   const config: PlotConfig = {
 //     data: [5, 2, 1, 2, 5],
@@ -209,7 +245,7 @@ type InputDataPoints = Array<InputDataRow>;
 //   const config: PlotConfig = {
 //     data: [
 //       ["Line A", [5, 2, 1, 2, 5]],
-//       ["Line B", [5, 2, 1, 2, 5]],
+//       ["Line B", [5, 5, 5, 5, 5]],
 //     ],
 //     xName: "XX",
 //     yName: "YY",
@@ -227,6 +263,30 @@ type InputDataPoints = Array<InputDataRow>;
 //     { color: "Line B", XX: 3, YY: 5 },
 //     { color: "Line B", XX: 4, YY: 5 },
 //     { color: "Line B", XX: 5, YY: 5 },
+//   ]);
+// });
+
+// Deno.test("Colored XY pairs work", () => {
+//   const config: PlotConfig = {
+//     data: [
+//       [
+//         "Line A",
+//         [
+//           [1, 2],
+//           [5, 3],
+//         ],
+//       ],
+//       ["Line B", [[4, 2]]],
+//     ],
+//     xName: "XX",
+//     yName: "YY",
+//     colorName: "color",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { color: "Line A", XX: 1, YY: 2 },
+//     { color: "Line A", XX: 5, YY: 3 },
+//     { color: "Line B", XX: 4, YY: 2 },
 //   ]);
 // });
 
@@ -252,6 +312,32 @@ type InputDataPoints = Array<InputDataRow>;
 //     { color: "Line B", XX: 1, YY: 5 },
 //     { color: "Line B", XX: 1, YY: 5 },
 //     { color: "Line B", XX: 1, YY: 5 },
+//   ]);
+// });
+
+// Deno.test("Uncolored XY pairs work", () => {
+//   const config: PlotConfig = {
+//     data: [
+//       [
+//         ["Line A", [5, 2, 1, 2, 5]],
+//         ["Line B", [5, 5, 5, 5, 5]],
+//       ],
+//     ],
+//     xName: "XX",
+//     yName: "YY",
+//   };
+//   const filledConfig = fillWithDefaultValues(config);
+//   assertEquals(filledConfig.data, [
+//     { XX: "Line A", YY: 5 },
+//     { XX: "Line A", YY: 2 },
+//     { XX: "Line A", YY: 1 },
+//     { XX: "Line A", YY: 2 },
+//     { XX: "Line A", YY: 5 },
+//     { XX: "Line B", YY: 5 },
+//     { XX: "Line B", YY: 5 },
+//     { XX: "Line B", YY: 5 },
+//     { XX: "Line B", YY: 5 },
+//     { XX: "Line B", YY: 5 },
 //   ]);
 // });
 
@@ -321,7 +407,7 @@ export type PlotConfig = {
    * If a string tuple, the first value is used as a key and the second as the label
    */
   yName?: string | [string, string];
-  /** Property name for the functions. */
+  /** Name of the color. If there is a color name specified, but no field has a color, the x values are used as colors*/
   colorName?: string;
   /** Print debug output */
   debug?: boolean;
@@ -422,6 +508,124 @@ const processFunction = (
   });
 
   return plottedFunction;
+};
+
+function areExplicitXYValues(
+  data: XYInputDataValue,
+  { debug }: { debug: boolean }
+): data is Array<[string | number, InputDataValue]> {
+  if (typeof data === "function") {
+    return false;
+  }
+  const { explicit } = data.reduce(
+    ({ explicit, keyType, valueType }, entry) => {
+      if (!explicit) {
+        return { explicit: false };
+      }
+      if (!Array.isArray(entry)) {
+        return { explicit: false };
+      }
+      if (entry.length !== 2) {
+        return { explicit: false };
+      }
+      const currentKeyType = typeof entry[0];
+      const currentValueType = typeof entry[1];
+      if (keyType === undefined && valueType === undefined) {
+        return {
+          explicit: true,
+          keyType: currentKeyType,
+          valueType: currentValueType,
+        };
+      }
+      if (currentKeyType !== keyType) {
+        return { explicit: false };
+      }
+      if (currentValueType !== valueType) {
+        return { explicit: false };
+      }
+      return {
+        explicit: true,
+        keyType,
+        valueType,
+      };
+    },
+    { explicit: true } as {
+      explicit: boolean;
+      keyType?: string;
+      valueType?: string;
+    }
+  );
+  if (debug) {
+    if (explicit) {
+      console.log(
+        `Using values as explicit XY pairs, because they all have the same type keys and are length 2`
+      );
+    }
+  }
+  return explicit;
+}
+
+const processXYInputValues = (
+  data: XYInputDataValue,
+  {
+    color,
+    fallbackColor,
+    xKey,
+    yKey,
+    colorKey,
+    from,
+    to,
+    step,
+    debug,
+  }: {
+    /** Color name. "" is left as is, undefined will be overwritten by the function name */
+    color: string | undefined;
+    /** Fallback color when `color` is not set and data is not a named function */
+    fallbackColor: string | undefined;
+    /** Name of the x field*/
+    xKey: string;
+    /** Name of the y field*/
+    yKey: string;
+    /** Name of the color field*/
+    colorKey: string;
+    /** Start the plot at this x value */
+    from: number;
+    /** End the plot at this y value */
+    to: number;
+    /** Step size when plotting a function */
+    step: number;
+    /** Log implicit decisions */
+    debug: boolean;
+  }
+) => {
+  if (typeof data === "function") {
+    return processFunction(data, {
+      color,
+      fallbackColor,
+      xKey,
+      yKey,
+      colorKey,
+      from,
+      to,
+      step,
+    });
+  }
+  // Is explicit, if all entries are tuples where the first key is the same type (string or number) and the second key is the same type (array or string or number)
+
+  const dataWithX = areExplicitXYValues(data, { debug })
+    ? data
+    : data.map((data, index) => [index + 1, data] as [number, InputDataValue]);
+
+  return dataWithX.flatMap(([x, data]) =>
+    processValue(data, {
+      x,
+      // color: color ?? `${x}`,
+      color: color,
+      xKey,
+      yKey,
+      colorKey,
+    })
+  );
 };
 
 const getDomain = (
@@ -598,32 +802,23 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
     }
 
     const [color, data] =
-      Array.isArray(inputRow) && inputRow.length === 2
-        ? inputRow
-        : [undefined, inputRow];
+      Array.isArray(inputRow) &&
+      inputRow.length === 2 &&
+      typeof inputRow[0] === "string"
+        ? (inputRow as [string, XYInputDataValue])
+        : [undefined, inputRow as XYInputDataValue];
 
-    if (typeof data === "function") {
-      return processFunction(data, {
-        color,
-        fallbackColor: "" + index + 1,
-        xKey,
-        yKey,
-        colorKey,
-        from: from ?? 0,
-        to: to ?? 10,
-        step,
-      });
-    }
-
-    return data.flatMap((data, index) =>
-      processValue(data, {
-        x: index + 1,
-        color: color ?? "" + index + 1,
-        xKey,
-        yKey,
-        colorKey,
-      })
-    );
+    return processXYInputValues(data, {
+      color,
+      fallbackColor: "" + index + 1,
+      xKey,
+      yKey,
+      colorKey,
+      from: from ?? 0,
+      to: to ?? 10,
+      step,
+      debug,
+    });
   });
   // typeof data[0] === "number"
   //   ? [[xName, data as number[]] satisfies [string, number[]]]
@@ -638,8 +833,26 @@ const fillWithDefaultValues = (config: PlotConfig): FilledConfig => {
 
   const chartName = name ?? ""; // `${xName} vs ${yName}`;
 
+  const explicitColorNameUsed = colorLabel !== DEFAULT_COLOR_NAME;
+  let useXAsColor = false;
+  if (explicitColorNameUsed) {
+    const noEntryHasAColor = !filledData.some((row) => !!row[colorKey]);
+    useXAsColor = noEntryHasAColor ? true : false;
+  }
+  if (debug && useXAsColor) {
+    console.log(
+      `Setting color ('${colorLabel}') to the value of x ('${xLabel}'), because no field has a color, but it was explicitly named.`
+    );
+  }
+  const valuesWithColorIfNecessary = useXAsColor
+    ? filledData.map((row) => ({
+        ...row,
+        [colorKey]: row[xKey],
+      }))
+    : filledData;
+
   // Replace xKey and yKey with xLabel and yLabel
-  const dataWithFixedFields = filledData.map((row) => {
+  const dataWithFixedFields = valuesWithColorIfNecessary.map((row) => {
     const fixedEntries = Object.entries(row).map(([key, value]) => {
       const newKey =
         {
@@ -674,13 +887,13 @@ export const plotFunctions = (config: PlotConfig) => {
     document: dom.window.document,
     grid: true,
     x: { axis: "top" },
-    y: { axis: "left", legend: "swatches" },
+    y: { axis: "left", legend: true },
     style: {
       background: "none",
       overflow: "visible",
     },
     color: {
-      legend: "swatches",
+      legend: true,
     },
 
     marks: [
@@ -700,43 +913,43 @@ export const plotFunctions = (config: PlotConfig) => {
   });
 };
 
-export const plotBoxes = (config: PlotConfig) => {
-  const { xName, yName, colorName, data, name, from, to, debug } =
-    fillWithDefaultValues(config);
+// export const plotBoxes = (config: PlotConfig) => {
+//   const { xName, yName, colorName, data, name, from, to, debug } =
+//     fillWithDefaultValues(config);
 
-  const dataWithColorAsX = data.map((data) => ({
-    ...data,
-    [xName]: data[colorName] ?? data[xName],
-  }));
+//   const dataWithColorAsX = data.map((data) => ({
+//     ...data,
+//     [xName]: data[colorName] ?? data[xName],
+//   }));
 
-  const showLabels = xName !== DEFAULT_X_NAME;
+//   const showLabels = xName !== DEFAULT_X_NAME;
 
-  if (debug) {
-    console.log({ data: dataWithColorAsX });
-  }
+//   if (debug) {
+//     console.log({ data: dataWithColorAsX });
+//   }
 
-  return Plot.plot({
-    title: name,
-    // padding: 0,
-    document: dom.window.document,
-    marginLeft: showLabels ? 70 : undefined,
-    x: {
-      axis: "top",
-      domain: [from, to],
-      grid: true,
-    },
-    y: {
-      axis: "left",
-      ...(showLabels ? { label: xName } : { label: "" }),
-    },
-    style: {
-      background: "none",
-      overflow: "visible",
-    },
+//   return Plot.plot({
+//     title: name,
+//     // padding: 0,
+//     document: dom.window.document,
+//     marginLeft: showLabels ? 70 : undefined,
+//     x: {
+//       axis: "top",
+//       domain: [from, to],
+//       grid: true,
+//     },
+//     y: {
+//       axis: "left",
+//       ...(showLabels ? { label: xName } : { label: "" }),
+//     },
+//     style: {
+//       background: "none",
+//       overflow: "visible",
+//     },
 
-    marks: [Plot.boxX(dataWithColorAsX, { y: xName, x: yName, fill: "grey" })],
-  });
-};
+//     marks: [Plot.boxX(dataWithColorAsX, { y: xName, x: yName, fill: "grey" })],
+//   });
+// };
 
 export const plotBars = (config: PlotConfig) => {
   const { xName, yName, colorName, data, name, from, to, debug } =
@@ -776,10 +989,10 @@ export const plotBars = (config: PlotConfig) => {
     },
     ...(showColor
       ? {
-          color: { legend: "swatches", label: colorName },
+          color: { legend: true, label: colorName },
           y: { label: "", ticks: [] },
         }
-      : {}), // color: { legend: "swatches" },
+      : {}), // color: { legend: true },
     style: {
       background: "none",
       overflow: "visible",
@@ -825,6 +1038,95 @@ export const plotBars = (config: PlotConfig) => {
           }
         )
       ),
+    ],
+  });
+};
+
+export const plotBoxes = (config: PlotConfig) => {
+  const { xName, yName, colorName, data, name, from, to, debug } =
+    fillWithDefaultValues(config);
+
+  const dataWithColorAsX = data.map((data) => ({
+    [xName]: data[colorName] ?? data[xName],
+    ...data,
+  }));
+
+  const differentColors = data
+    .map((d) => d[colorName])
+    .filter((c) => c !== undefined)
+    .filter((c, i, a) => a.indexOf(c) === i).length;
+
+  const showLabels = xName !== DEFAULT_X_NAME;
+  const showColor = differentColors > 1;
+
+  if (debug) {
+    console.log({ data: dataWithColorAsX });
+  }
+
+  return Plot.plot({
+    title: name,
+    // padding: 0,
+    document: dom.window.document,
+    marginLeft: showLabels ? 50 : undefined,
+    x: {
+      axis: "top",
+      domain: [from, to],
+      grid: true,
+    },
+    fy: {
+      axis: "left",
+
+      ...(showLabels ? { label: xName } : { label: "" }),
+    },
+    ...(showColor
+      ? {
+          color: { legend: true, label: colorName },
+          y: { label: "", ticks: [] },
+        }
+      : {}), // color: { legend: true },
+    style: {
+      background: "none",
+      overflow: "visible",
+    },
+    marks: [
+      Plot.boxX(
+        dataWithColorAsX,
+
+        {
+          x: yName,
+          fy: xName,
+
+          ...(showColor ? { fill: colorName, y: colorName } : { z: xName }),
+        }
+      ),
+      // Plot.textX(
+      //   dataWithColorAsX.filter((d) => Number(d[yName]) > 0),
+      //   Plot[showColor ? "groupY" : "groupZ"](
+      //     { x: "mean", text: "mean" },
+      //     {
+      //       text: (d) => d[yName],
+      //       x: yName,
+      //       fy: xName,
+      //       ...(showColor ? { y: colorName } : { z: xName }),
+      //       textAnchor: "start",
+      //       dx: 3,
+      //     }
+      //   )
+      // ),
+      // Plot.textX(
+      //   dataWithColorAsX.filter((d) => Number(d[yName]) < 0),
+      //   Plot[showColor ? "groupY" : "groupZ"](
+      //     { x: "mean", text: "mean" },
+      //     {
+      //       text: (d) => d[yName],
+      //       x: yName,
+      //       fy: xName,
+      //       ...(showColor ? { y: colorName } : { z: xName }),
+      //       textAnchor: "end",
+      //       dx: -3,
+      //     }
+      //   )
+      // ),
     ],
   });
 };

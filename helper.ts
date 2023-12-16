@@ -11,6 +11,7 @@ const dom = new JSDOM(
 dom.window.document.createElementReal = dom.window.document.createElement;
 dom.window.document.createElement = (e: string) => {
   if (e == "canvas") {
+    // For swatch ramp
     return { ...createCanvas(256, 1) };
   }
   return dom.window.document.createElementReal(e);

@@ -1043,6 +1043,97 @@ export const plotBars = (config: PlotConfig) => {
   });
 };
 
+// export const plotStackedBars = (config: PlotConfig) => {
+//   const { xName, yName, colorName, data, name, from, to, debug } =
+//     fillWithDefaultValues(config);
+
+//   const dataWithColorAsX = data.map((data) => ({
+//     [xName]: data[colorName] ?? data[xName],
+//     ...data,
+//   }));
+
+//   const differentColors = data
+//     .map((d) => d[colorName])
+//     .filter((c) => c !== undefined)
+//     .filter((c, i, a) => a.indexOf(c) === i).length;
+
+//   const showLabels = xName !== DEFAULT_X_NAME;
+//   const showColor = differentColors > 1;
+
+//   if (debug) {
+//     console.log({ data: dataWithColorAsX });
+//   }
+
+//   return Plot.plot({
+//     title: name,
+//     // padding: 0,
+//     document: dom.window.document,
+//     marginLeft: showLabels ? 50 : undefined,
+//     x: {
+//       axis: "top",
+//       domain: [from, to],
+//       grid: true,
+//     },
+//     y: {
+//       axis: "left",
+
+//       ...(showLabels ? { label: xName } : { label: "" }),
+//     },
+//     ...(showColor
+//       ? {
+//           color: { legend: true, label: colorName },
+//         }
+//       : {}), // color: { legend: true },
+//     style: {
+//       background: "none",
+//       overflow: "visible",
+//     },
+//     marks: [
+//       Plot.barX(
+//         dataWithColorAsX,
+//         Plot.groupY(
+//           { x: "mean" },
+//           {
+//             x: yName,
+//             y: xName,
+//             sort: false,
+
+//             ...(showColor ? { fill: colorName } : {}),
+//           }
+//         )
+//       ),
+//       // Plot.textX(
+//       //   dataWithColorAsX.filter((d) => Number(d[yName]) > 0),
+//       //   Plot[showColor ? "groupY" : "groupZ"](
+//       //     { x: "mean", text: "mean" },
+//       //     {
+//       //       text: (d) => d[yName],
+//       //       x: yName,
+//       //       fy: xName,
+//       //       ...(showColor ? { y: colorName } : { z: xName }),
+//       //       textAnchor: "start",
+//       //       dx: 3,
+//       //     }
+//       //   )
+//       // ),
+//       // Plot.textX(
+//       //   dataWithColorAsX.filter((d) => Number(d[yName]) < 0),
+//       //   Plot[showColor ? "groupY" : "groupZ"](
+//       //     { x: "mean", text: "mean" },
+//       //     {
+//       //       text: (d) => d[yName],
+//       //       x: yName,
+//       //       fy: xName,
+//       //       ...(showColor ? { y: colorName } : { z: xName }),
+//       //       textAnchor: "end",
+//       //       dx: -3,
+//       //     }
+//       //   )
+//       // ),
+//     ],
+//   });
+// };
+
 export const plotBoxes = (config: PlotConfig) => {
   const { xName, yName, colorName, data, name, from, to, debug } =
     fillWithDefaultValues(config);
